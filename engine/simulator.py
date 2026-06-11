@@ -30,25 +30,22 @@ def run_simulation(days: int = 30):
         "MCD",
     ]
 
+    # 1. LOAD ONCE (NO LOOP IO)
     prices = load_price_history(tickers)
 
-    features = build_feature_matrix()
-
     equity = [1.0]
-
-    # START POSITION (tom portfölj)
     position = {}
 
-    max_days = min(len(prices), days)
+    max_days = min(days, len(prices))
 
     for day in range(1, max_days):
-        # -----------------------------
-        # SIGNALS
-        # -----------------------------
+        # 2. FEATURES FROM LOCAL DATA
+        features = build_feature_matrix(prices)
+
         regime = detect_regime(features)
         alpha = build_alpha(features, regime)
 
-        top = alpha.head(10).copy()
+        top = alpha.head(10)
 
         total = top["score"].sum()
 
@@ -56,17 +53,14 @@ def run_simulation(days: int = 30):
             row["symbol"]: row["score"] / total for _, row in top.iterrows()
         }
 
-        # -----------------------------
-        # PnL (USE OLD POSITION)
-        # -----------------------------
+        # 3. PnL
         daily_return = 0.0
 
         for sym, weight in position.items():
             if sym not in prices.columns:
                 continue
 
-            series = prices[sym]
-            series = pd.Series(series).dropna().astype(float)
+            series = prices[sym].dropna()
 
             if day >= len(series):
                 continue
@@ -77,17 +71,10 @@ def run_simulation(days: int = 30):
             if prev_price == 0:
                 continue
 
-            r = (curr_price / prev_price) - 1
-            daily_return += weight * r
+            daily_return += weight * ((curr_price / prev_price) - 1)
 
-        # -----------------------------
-        # UPDATE EQUITY
-        # -----------------------------
         equity.append(equity[-1] * (1 + daily_return))
 
-        # -----------------------------
-        # UPDATE POSITION
-        # -----------------------------
         position = new_position
 
     return pd.Series(equity)

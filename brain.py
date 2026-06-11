@@ -1,3 +1,4 @@
+from engine.historical import load_price_history
 from engine.features import build_feature_matrix
 from engine.regime import detect_regime
 from engine.alpha import build_alpha
@@ -9,13 +10,35 @@ from engine.simulator import run_simulation
 def main():
 
     print("\n" + "=" * 70)
-    print("TRAID V8 - HYBRID ENGINE")
+    print("TRAID V9 - CLEAN HYBRID ENGINE")
     print("=" * 70)
 
-    # -------------------------
-    # REAL-TIME PIPELINE (V7)
-    # -------------------------
-    features = build_feature_matrix()
+    tickers = [
+        "AAPL",
+        "MSFT",
+        "NVDA",
+        "AMZN",
+        "META",
+        "GOOGL",
+        "TSLA",
+        "NFLX",
+        "AMD",
+        "AVGO",
+        "JPM",
+        "BAC",
+        "GS",
+        "MS",
+        "LLY",
+        "JNJ",
+        "UNH",
+        "ABBV",
+        "KO",
+        "MCD",
+    ]
+
+    prices = load_price_history(tickers)
+
+    features = build_feature_matrix(prices)
     regime = detect_regime(features)
 
     alpha = build_alpha(features, regime)
@@ -29,18 +52,11 @@ def main():
 
     bt = backtest_signals(portfolio)
 
-    print("\nBACKTEST METRICS (V7)")
-    print("------------------------------------")
+    print("\nBACKTEST METRICS")
     print(bt.to_string(index=False))
 
-    # -------------------------
-    # SIMULATION PIPELINE (V8)
-    # -------------------------
     equity = run_simulation(30)
-
-    print("\nV8 SIMULATION")
-    print("------------------------------------")
-    print(f"Final equity: {equity.iloc[-1]:.3f}")
+    print("\nFINAL EQUITY:", equity.iloc[-1])
 
 
 if __name__ == "__main__":
