@@ -26,36 +26,28 @@ def load_price_history(tickers, period="6mo"):
             )
 
             if df is None or df.empty:
-                print(f"NO DATA: {t}")
                 continue
 
             close = df["Close"]
 
-            # Säkerställ att Close alltid blir en 1D Series
             if isinstance(close, pd.DataFrame):
                 close = close.iloc[:, 0]
 
             close = close.dropna().astype(float)
 
             if len(close) < 10:
-                print(f"TOO LITTLE DATA: {t}")
                 continue
 
             close.name = t
-
             data[t] = close
 
-        except Exception as e:
-            print(f"ERROR {t}: {e}")
+        except Exception:
             continue
 
     if len(data) == 0:
         raise ValueError("No valid price data loaded")
 
     prices = pd.DataFrame(data)
-
     _price_cache = prices
-
-    print(f"CACHED PRICES: {len(prices.columns)} symbols")
 
     return prices

@@ -1,17 +1,10 @@
 from engine.historical import load_price_history
-from engine.features import build_feature_matrix
-from engine.regime import detect_regime
-from engine.alpha import build_alpha
-from engine.portfolio import build_portfolio_weights
-from engine.backtest import backtest_signals
+from engine.strategy import build_strategy
 from engine.simulator import run_simulation
+from engine.robustness import run_robustness_test
 
 
 def main():
-
-    print("\n" + "=" * 70)
-    print("TRAID V9 - CLEAN HYBRID ENGINE")
-    print("=" * 70)
 
     tickers = [
         "AAPL",
@@ -38,25 +31,25 @@ def main():
 
     prices = load_price_history(tickers)
 
-    features = build_feature_matrix(prices)
-    regime = detect_regime(features)
+    print(f"DATA: {len(prices)} rows, {len(prices.columns)} symbols")
 
-    alpha = build_alpha(features, regime)
-    portfolio = build_portfolio_weights(alpha, top_n=10)
+    result = build_strategy(prices, top_n=10)
 
-    print("\nREGIME:")
-    print(regime)
+    print("\nREGIME:", result["regime"])
+    print(result["portfolio"].to_string(index=False))
 
-    print("\nPORTFOLIO:")
-    print(portfolio.to_string(index=False))
+    equity = run_simulation(prices, window=60)
 
-    bt = backtest_signals(portfolio)
-
-    print("\nBACKTEST METRICS")
-    print(bt.to_string(index=False))
-
-    equity = run_simulation(30)
     print("\nFINAL EQUITY:", equity.iloc[-1])
+
+    try:
+        stats = run_robustness_test(prices, runs=10)
+
+        print("\nROBUSTNESS:")
+        print(stats)
+
+    except Exception as e:
+        print("ROBUSTNESS SKIPPED:", e)
 
 
 if __name__ == "__main__":

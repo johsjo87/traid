@@ -1,59 +1,36 @@
 import pandas as pd
-from engine.historical import load_price_history
-from engine.features import build_feature_matrix
-from engine.regime import detect_regime
-from engine.alpha import build_alpha
+from engine.strategy import build_strategy
 
 
-def run_simulation(days: int = 30):
-
-    tickers = [
-        "AAPL",
-        "MSFT",
-        "NVDA",
-        "AMZN",
-        "META",
-        "GOOGL",
-        "TSLA",
-        "NFLX",
-        "AMD",
-        "AVGO",
-        "JPM",
-        "BAC",
-        "GS",
-        "MS",
-        "LLY",
-        "JNJ",
-        "UNH",
-        "ABBV",
-        "KO",
-        "MCD",
-    ]
-
-    # 1. LOAD ONCE (NO LOOP IO)
-    prices = load_price_history(tickers)
+def run_simulation(prices: pd.DataFrame, window: int = 60, rebalance_freq: int = 5):
 
     equity = [1.0]
     position = {}
 
-    max_days = min(days, len(prices))
+    start = window + 50
 
-    for day in range(1, max_days):
-        # 2. FEATURES FROM LOCAL DATA
-        features = build_feature_matrix(prices)
+    if len(prices) < start:
+        raise ValueError("Not enough data")
 
-        regime = detect_regime(features)
-        alpha = build_alpha(features, regime)
+    for day in range(start, len(prices)):
+        # rebalancera bara ibland (inte varje dag)
+        if day % rebalance_freq == 0:
+            window_prices = prices.iloc[:day]
 
-        top = alpha.head(10)
+            result = build_strategy(window_prices, top_n=10)
+            portfolio = result["portfolio"]
 
-        total = top["score"].sum()
+            if portfolio is None or portfolio.empty:
+                position = {}
+            else:
+                total = portfolio["weight"].sum()
 
-        new_position = {
-            row["symbol"]: row["score"] / total for _, row in top.iterrows()
-        }
+                position = {
+                    row["symbol"]: row["weight"] / total
+                    for _, row in portfolio.iterrows()
+                }
 
-        # 3. PnL
+        # PnL (mark-to-market)
         daily_return = 0.0
 
         for sym, weight in position.items():
@@ -74,7 +51,5 @@ def run_simulation(days: int = 30):
             daily_return += weight * ((curr_price / prev_price) - 1)
 
         equity.append(equity[-1] * (1 + daily_return))
-
-        position = new_position
 
     return pd.Series(equity)

@@ -1,93 +1,76 @@
-from engine.risk import apply_risk_adjustment
 import pandas as pd
 
 
-def _zscore(df: pd.DataFrame, col: str):
-
-    std = df[col].std()
-
-    if std == 0 or pd.isna(std):
-        return pd.Series(0.0, index=df.index)
-
-    return (df[col] - df[col].mean()) / (std + 1e-9)
+def _rank(df: pd.DataFrame, col: str):
+    return df[col].rank(pct=True)
 
 
 def build_alpha(features: pd.DataFrame, regime: str) -> pd.DataFrame:
+
+    if features is None or features.empty:
+        return pd.DataFrame()
+
     df = features.copy()
 
     # -------------------------
-    # NORMALIZED FEATURES
+    # CROSS-SECTIONAL RANKING
     # -------------------------
-
-    df["z_mom5"] = _zscore(df, "return_5")
-    df["z_mom20"] = _zscore(df, "return_20")
-    df["z_trend"] = _zscore(df, "trend_strength")
-    df["z_vol"] = _zscore(df, "volatility")
-    df["z_dist"] = _zscore(df, "distance_high")
-    df["z_rsi"] = _zscore(df, "rsi")
-
-    # Lägre volatilitet är bättre
-    df["inv_vol"] = -df["z_vol"]
+    df["r_mom5"] = _rank(df, "return_5")
+    df["r_mom20"] = _rank(df, "return_20")
+    df["r_trend"] = _rank(df, "trend_strength")
+    df["r_vol"] = 1 - _rank(df, "volatility")
+    df["r_dist"] = _rank(df, "distance_high")
+    df["r_rsi"] = 1 - abs(df["rsi"] - 50) / 50
+    df["r_rel"] = _rank(df, "rel_strength")
 
     # -------------------------
-    # REGIME ADAPTIVE WEIGHTS
+    # REGIME WEIGHTS
     # -------------------------
-
     if regime == "BULL":
-        df["alpha"] = (
-            0.20 * df["z_mom5"]
-            + 0.30 * df["z_mom20"]
-            + 0.25 * df["z_trend"]
-            + 0.10 * df["inv_vol"]
-            + 0.05 * df["z_dist"]
-            + 0.10 * df["z_rsi"]
-        )
+        weights = {
+            "r_mom5": 0.10,
+            "r_mom20": 0.25,
+            "r_trend": 0.20,
+            "r_vol": 0.10,
+            "r_dist": 0.10,
+            "r_rsi": 0.10,
+            "r_rel": 0.15,
+        }
 
     elif regime == "BEAR":
-        df["alpha"] = (
-            0.10 * df["z_mom5"]
-            + 0.15 * df["z_mom20"]
-            + 0.20 * df["z_trend"]
-            + 0.35 * df["inv_vol"]
-            + 0.10 * df["z_dist"]
-            + 0.10 * df["z_rsi"]
-        )
+        weights = {
+            "r_mom5": 0.05,
+            "r_mom20": 0.10,
+            "r_trend": 0.20,
+            "r_vol": 0.25,
+            "r_dist": 0.15,
+            "r_rsi": 0.15,
+            "r_rel": 0.10,
+        }
 
     else:
-        df["alpha"] = (
-            0.15 * df["z_mom5"]
-            + 0.25 * df["z_mom20"]
-            + 0.25 * df["z_trend"]
-            + 0.15 * df["inv_vol"]
-            + 0.10 * df["z_dist"]
-            + 0.10 * df["z_rsi"]
-        )
+        weights = {
+            "r_mom5": 0.10,
+            "r_mom20": 0.20,
+            "r_trend": 0.20,
+            "r_vol": 0.15,
+            "r_dist": 0.15,
+            "r_rsi": 0.05,
+            "r_rel": 0.15,
+        }
 
     # -------------------------
-    # SCORE 0-100
+    # FINAL SCORE
     # -------------------------
+    df["alpha"] = 0
 
-    alpha_min = df["alpha"].min()
-    alpha_max = df["alpha"].max()
+    for k, w in weights.items():
+        df["alpha"] += w * df[k]
 
-    if abs(alpha_max - alpha_min) < 1e-9:
-        df["score"] = 50.0
-    else:
-        df["score"] = (df["alpha"] - alpha_min) / (alpha_max - alpha_min) * 100
-
-    # -------------------------
-    # RISK ADJUSTMENT
-    # -------------------------
-
-    df = apply_risk_adjustment(df)
-
-    # -------------------------
-    # SIGNALS
-    # -------------------------
+    df["score"] = (df["alpha"] * 100).clip(0, 100)
 
     df["signal"] = "HOLD"
-
-    df.loc[df["score"] >= 70, "signal"] = "BUY"
-    df.loc[df["score"] <= 30, "signal"] = "SELL"
+    df.loc[df["score"] >= 65, "signal"] = "BUY"
+    df.loc[df["score"] <= 35, "signal"] = "SELL"
 
     return df.sort_values("score", ascending=False).reset_index(drop=True)
