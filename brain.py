@@ -40,16 +40,10 @@ def main():
     print(f"DATA: {len(prices)} rows, {len(prices.columns)} symbols")
 
     # -------------------------
-    # BUILD STRATEGY
+    # STRATEGY
     # -------------------------
 
     result = build_strategy(prices, top_n=10)
-
-    # -------------------------
-    # FEATURE SUMMARY
-    # -------------------------
-
-    feature_summary = analyze_features(result["features"])
 
     # -------------------------
     # RESEARCH DATASET
@@ -60,7 +54,13 @@ def main():
     print(f"\nRESEARCH DATASET: {len(dataset)} rows")
 
     # -------------------------
-    # OUTPUT
+    # FEATURE PREDICTIVE ANALYSIS
+    # -------------------------
+
+    feature_summary = analyze_features(dataset)
+
+    # -------------------------
+    # CURRENT MARKET STATE
     # -------------------------
 
     print("\nREGIME:", result["regime"])
@@ -69,12 +69,17 @@ def main():
     print("--------------------------------")
     print(result["portfolio"].to_string(index=False))
 
-    print("\nFEATURE ANALYSIS")
+    # -------------------------
+    # FEATURE ANALYSIS
+    # -------------------------
+
+    print("\nFEATURE PREDICTIVE POWER")
     print("--------------------------------")
+
     print(feature_summary.to_string(index=False))
 
     # -------------------------
-    # SIMULATION
+    # WALK FORWARD SIMULATION
     # -------------------------
 
     equity = run_simulation(prices, window=60)

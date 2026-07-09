@@ -15,40 +15,69 @@ def build_feature_matrix(prices: pd.DataFrame):
 
         price = float(close.iloc[-1])
 
+        # -------------------------
+        # MOMENTUM
+        # -------------------------
+
         return_5 = float(close.pct_change(5).iloc[-1])
         return_20 = float(close.pct_change(20).iloc[-1])
+
+        # -------------------------
+        # TREND
+        # -------------------------
 
         sma20 = close.rolling(20).mean().iloc[-1]
         sma50 = close.rolling(50).mean().iloc[-1]
 
-        trend_strength = (
-            float(sma20 / sma50)
-            if sma20 == sma20 and sma50 == sma50 and sma50 != 0
-            else 1.0
-        )
+        if pd.isna(sma20) or pd.isna(sma50) or sma50 == 0:
+            trend_strength = 1.0
+        else:
+            trend_strength = float(sma20 / sma50)
+
+        # -------------------------
+        # VOLATILITY
+        # -------------------------
 
         volatility = float(close.pct_change().rolling(20).std().iloc[-1])
+
         if pd.isna(volatility):
             volatility = 0.0
 
-        rolling_high = close.rolling(126).max().iloc[-1]
-        distance_high = (
-            float(price / rolling_high)
-            if rolling_high == rolling_high and rolling_high != 0
-            else 1.0
-        )
+        # -------------------------
+        # DISTANCE TO HIGH
+        # -------------------------
 
-        # RSI (robust fallback)
+        lookback_high = min(126, len(close))
+
+        rolling_high = close.rolling(lookback_high).max().iloc[-1]
+
+        if rolling_high > 0:
+            distance_high = float(price / rolling_high)
+        else:
+            distance_high = 1.0
+
+        # -------------------------
+        # RSI
+        # -------------------------
+
         delta = close.diff()
+
         gain = delta.clip(lower=0).rolling(14).mean()
         loss = (-delta.clip(upper=0)).rolling(14).mean()
 
         rs = gain / (loss + 1e-9)
-        rsi_series = (100 - (100 / (1 + rs))).iloc[-1]
 
-        rsi = float(rsi_series) if rsi_series == rsi_series else 50.0
+        rsi_value = (100 - (100 / (1 + rs))).iloc[-1]
 
-        # RELATIVE STRENGTH (robust)
+        if pd.isna(rsi_value):
+            rsi = 50.0
+        else:
+            rsi = float(rsi_value)
+
+        # -------------------------
+        # RELATIVE STRENGTH
+        # -------------------------
+
         stock_ret_20 = close.pct_change(20).iloc[-1]
         market_ret_20 = market_return.iloc[-1]
 
@@ -56,6 +85,10 @@ def build_feature_matrix(prices: pd.DataFrame):
             rel_strength = 0.0
         else:
             rel_strength = float(stock_ret_20 - market_ret_20)
+
+        # -------------------------
+        # STORE FEATURES
+        # -------------------------
 
         rows.append(
             {
@@ -71,6 +104,4 @@ def build_feature_matrix(prices: pd.DataFrame):
             }
         )
 
-    df = pd.DataFrame(rows)
-
-    return df
+    return pd.DataFrame(rows)

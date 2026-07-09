@@ -1,12 +1,16 @@
 import pandas as pd
 
 
-def analyze_features(features: pd.DataFrame) -> pd.DataFrame:
+def analyze_features(dataset: pd.DataFrame) -> pd.DataFrame:
+    """
+    Analyserar vilka features som historiskt
+    haft samband med framtida avkastning.
+    """
 
-    if features is None or features.empty:
+    if dataset.empty:
         return pd.DataFrame()
 
-    metrics = [
+    features = [
         "return_5",
         "return_20",
         "trend_strength",
@@ -18,20 +22,21 @@ def analyze_features(features: pd.DataFrame) -> pd.DataFrame:
 
     rows = []
 
-    for metric in metrics:
-        if metric not in features.columns:
+    for feature in features:
+        if feature not in dataset.columns:
             continue
 
-        series = features[metric]
+        correlation = dataset[feature].corr(dataset["future_return"])
 
         rows.append(
             {
-                "feature": metric,
-                "mean": float(series.mean()),
-                "std": float(series.std()),
-                "min": float(series.min()),
-                "max": float(series.max()),
+                "feature": feature,
+                "correlation": correlation,
+                "mean": dataset[feature].mean(),
+                "std": dataset[feature].std(),
             }
         )
 
-    return pd.DataFrame(rows)
+    result = pd.DataFrame(rows)
+
+    return result.sort_values("correlation", ascending=False).reset_index(drop=True)
