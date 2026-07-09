@@ -3,6 +3,7 @@ from engine.strategy import build_strategy
 from engine.simulator import run_simulation
 from engine.robustness import run_robustness_test
 from engine.feature_analysis import analyze_features
+from engine.feature_dataset import build_feature_dataset
 
 
 def main():
@@ -45,10 +46,18 @@ def main():
     result = build_strategy(prices, top_n=10)
 
     # -------------------------
-    # FEATURE ANALYSIS
+    # FEATURE SUMMARY
     # -------------------------
 
     feature_summary = analyze_features(result["features"])
+
+    # -------------------------
+    # RESEARCH DATASET
+    # -------------------------
+
+    dataset = build_feature_dataset(prices)
+
+    print(f"\nRESEARCH DATASET: {len(dataset)} rows")
 
     # -------------------------
     # OUTPUT
