@@ -8,6 +8,7 @@ from engine.feature_optimizer import optimize_features
 from engine.market_outlook import build_market_outlook
 from engine.risk_engine import analyze_risk
 from engine.stock_analysis import analyze_portfolio
+from engine.timeframe_analysis import analyze_timeframes_portfolio
 
 
 def main():
@@ -35,31 +36,15 @@ def main():
         "MCD",
     ]
 
-    # -------------------------
-    # LOAD DATA
-    # -------------------------
-
     prices = load_price_history(tickers)
 
     print(f"DATA: {len(prices)} rows, {len(prices.columns)} symbols")
-
-    # -------------------------
-    # RESEARCH DATASET
-    # -------------------------
 
     dataset = build_feature_dataset(prices)
 
     print(f"\nRESEARCH DATASET: {len(dataset)} rows")
 
-    # -------------------------
-    # STRATEGY
-    # -------------------------
-
     result = build_strategy(prices, top_n=10)
-
-    # -------------------------
-    # MARKET OUTLOOK
-    # -------------------------
 
     outlook = build_market_outlook(result["features"], result["regime"])
 
@@ -87,10 +72,6 @@ def main():
     print("\nAnalysis:")
     print(outlook["analysis"])
 
-    # -------------------------
-    # MARKET RISK
-    # -------------------------
-
     print("\nMARKET RISK")
     print("--------------------------------")
 
@@ -102,10 +83,6 @@ def main():
 
     for reason in risk["reasons"]:
         print("-", reason)
-
-    # -------------------------
-    # PORTFOLIO
-    # -------------------------
 
     print("\nPORTFOLIO")
     print("--------------------------------")
@@ -139,6 +116,26 @@ def main():
 
         for item in report["risks"]:
             print("-", item)
+
+    # -------------------------
+    # TIMEFRAME ANALYSIS
+    # -------------------------
+
+    timeframe_reports = analyze_timeframes_portfolio(
+        result["portfolio"], result["features"]
+    )
+
+    print("\nTIMEFRAME ANALYSIS")
+    print("--------------------------------")
+
+    for item in timeframe_reports:
+        print("\n" + item["symbol"])
+
+        print("Short term:", item["short_term"])
+
+        print("Medium term:", item["medium_term"])
+
+        print("Long term:", item["long_term"])
 
     # -------------------------
     # FEATURE ANALYSIS
@@ -184,7 +181,6 @@ def main():
 
     except Exception as e:
         print("\nROBUSTNESS SKIPPED:")
-
         print(e)
 
 
