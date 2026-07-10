@@ -9,6 +9,7 @@ from engine.market_outlook import build_market_outlook
 from engine.risk_engine import analyze_risk
 from engine.stock_analysis import analyze_portfolio
 from engine.timeframe_analysis import analyze_timeframes_portfolio
+from engine.prediction_engine import predict_from_history
 
 
 def main():
@@ -36,15 +37,31 @@ def main():
         "MCD",
     ]
 
+    # -------------------------
+    # LOAD DATA
+    # -------------------------
+
     prices = load_price_history(tickers)
 
     print(f"DATA: {len(prices)} rows, {len(prices.columns)} symbols")
+
+    # -------------------------
+    # RESEARCH DATASET
+    # -------------------------
 
     dataset = build_feature_dataset(prices)
 
     print(f"\nRESEARCH DATASET: {len(dataset)} rows")
 
+    # -------------------------
+    # STRATEGY
+    # -------------------------
+
     result = build_strategy(prices, top_n=10)
+
+    # -------------------------
+    # MARKET OUTLOOK
+    # -------------------------
 
     outlook = build_market_outlook(result["features"], result["regime"])
 
@@ -72,6 +89,10 @@ def main():
     print("\nAnalysis:")
     print(outlook["analysis"])
 
+    # -------------------------
+    # MARKET RISK
+    # -------------------------
+
     print("\nMARKET RISK")
     print("--------------------------------")
 
@@ -83,6 +104,10 @@ def main():
 
     for reason in risk["reasons"]:
         print("-", reason)
+
+    # -------------------------
+    # PORTFOLIO
+    # -------------------------
 
     print("\nPORTFOLIO")
     print("--------------------------------")
@@ -136,6 +161,33 @@ def main():
         print("Medium term:", item["medium_term"])
 
         print("Long term:", item["long_term"])
+
+    # -------------------------
+    # PREDICTION ENGINE
+    # -------------------------
+
+    predictions = predict_from_history(result["features"], dataset)
+
+    print("\nPREDICTION ENGINE")
+    print("--------------------------------")
+
+    for _, row in predictions.iterrows():
+        print(f"\n{row['symbol']}")
+
+        if row["samples"] == 0:
+            print("No similar historical cases found.")
+
+            continue
+
+        print(f"Setup quality: {row['setup_quality']}/100")
+
+        print(f"Reliability: {row['reliability']}")
+
+        print(f"Average future return: {row['avg_future_return']:.2%}")
+
+        print(f"Positive outcomes: {row['positive_rate']:.1f}%")
+
+        print(f"Historical samples: {int(row['samples'])}")
 
     # -------------------------
     # FEATURE ANALYSIS
