@@ -57,7 +57,11 @@ def main():
     # STRATEGY
     # -------------------------
 
-    result = build_strategy(prices, top_n=10)
+    result = build_strategy(
+        prices,
+        dataset,
+        top_n=10,
+    )
 
     # -------------------------
     # MARKET OUTLOOK
@@ -112,7 +116,20 @@ def main():
     print("\nPORTFOLIO")
     print("--------------------------------")
 
-    print(result["portfolio"].to_string(index=False))
+    print(
+        result["portfolio"][
+            [
+                "symbol",
+                "alpha_score",
+                "prediction_bonus",
+                "confidence",
+                "prediction_samples",
+                "score",
+                "signal",
+                "weight",
+            ]
+        ].to_string(index=False)
+    )
 
     # -------------------------
     # STOCK ANALYSIS
@@ -180,6 +197,8 @@ def main():
             continue
 
         print(f"Setup quality: {row['setup_quality']}/100")
+
+        print(f"Prediction score: {row['prediction_score']:+.2f}")
 
         print(f"Reliability: {row['reliability']}")
 

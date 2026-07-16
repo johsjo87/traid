@@ -4,9 +4,15 @@ from engine.features import build_feature_matrix
 from engine.regime import detect_regime
 from engine.alpha import build_alpha
 from engine.portfolio import build_portfolio_weights
+from engine.prediction_engine import predict_from_history
+from engine.scoring import combine_scores
 
 
-def build_strategy(prices: pd.DataFrame, top_n: int = 10):
+def build_strategy(
+    prices: pd.DataFrame,
+    dataset: pd.DataFrame,
+    top_n: int = 10,
+):
 
     features = build_feature_matrix(prices)
 
@@ -16,9 +22,17 @@ def build_strategy(prices: pd.DataFrame, top_n: int = 10):
     regime = detect_regime(features)
 
     alpha = build_alpha(features, regime)
+    predictions = predict_from_history(
+        features,
+        dataset,
+    )
 
     if alpha is None or len(alpha) == 0:
         raise ValueError("Alpha is empty")
+    alpha = combine_scores(
+        alpha,
+        predictions,
+    )
 
     portfolio = build_portfolio_weights(alpha, top_n=top_n)
 
@@ -26,5 +40,6 @@ def build_strategy(prices: pd.DataFrame, top_n: int = 10):
         "features": features,
         "regime": regime,
         "alpha": alpha,
+        "predictions": predictions,
         "portfolio": portfolio,
     }

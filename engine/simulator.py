@@ -1,8 +1,14 @@
 import pandas as pd
+
 from engine.strategy import build_strategy
+from engine.feature_dataset import build_feature_dataset
 
 
-def run_simulation(prices: pd.DataFrame, window: int = 60, rebalance_freq: int = 5):
+def run_simulation(
+    prices: pd.DataFrame,
+    window: int = 60,
+    rebalance_freq: int = 5,
+):
 
     equity = [1.0]
     position = {}
@@ -13,15 +19,29 @@ def run_simulation(prices: pd.DataFrame, window: int = 60, rebalance_freq: int =
         raise ValueError("Not enough data")
 
     for day in range(start, len(prices)):
-        # rebalancera bara ibland (inte varje dag)
+        # -------------------------
+        # REBALANCE
+        # -------------------------
+
         if day % rebalance_freq == 0:
             window_prices = prices.iloc[:day]
 
-            result = build_strategy(window_prices, top_n=10)
+            research_dataset = build_feature_dataset(window_prices)
+
+            if research_dataset.empty:
+                continue
+
+            result = build_strategy(
+                window_prices,
+                research_dataset,
+                top_n=10,
+            )
+
             portfolio = result["portfolio"]
 
             if portfolio is None or portfolio.empty:
                 position = {}
+
             else:
                 total = portfolio["weight"].sum()
 
@@ -30,7 +50,10 @@ def run_simulation(prices: pd.DataFrame, window: int = 60, rebalance_freq: int =
                     for _, row in portfolio.iterrows()
                 }
 
-        # PnL (mark-to-market)
+        # -------------------------
+        # DAILY RETURN
+        # -------------------------
+
         daily_return = 0.0
 
         for sym, weight in position.items():
@@ -43,6 +66,7 @@ def run_simulation(prices: pd.DataFrame, window: int = 60, rebalance_freq: int =
                 continue
 
             prev_price = float(series.iloc[day - 1])
+
             curr_price = float(series.iloc[day])
 
             if prev_price == 0:

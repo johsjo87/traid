@@ -28,27 +28,46 @@ def calculate_setup_quality(avg_return, positive_rate, samples):
 
     score = 50
 
-    # avkastning
+    # Avkastning
     if avg_return > 0.05:
         score += 20
 
     elif avg_return > 0.02:
         score += 10
 
-    # positiv historik
-
+    # Positiv historik
     if positive_rate > 70:
         score += 20
 
     elif positive_rate > 60:
         score += 10
 
-    # antal exempel
-
+    # Antal exempel
     if samples > 100:
         score += 10
 
     return min(100, score)
+
+
+def calculate_prediction_score(
+    avg_return,
+    positive_rate,
+    reliability,
+):
+    """
+    Beräknar en numerisk prediction score som senare används
+    av alpha-modellen.
+    """
+
+    reliability_factor = {
+        "HIGH": 1.0,
+        "MEDIUM": 0.6,
+        "LOW": 0.2,
+    }[reliability]
+
+    score = avg_return * 100 * (positive_rate / 100) * reliability_factor
+
+    return round(score, 2)
 
 
 def predict_from_history(
@@ -78,6 +97,7 @@ def predict_from_history(
             predictions.append(
                 {
                     "symbol": current["symbol"],
+                    "prediction_score": 0,
                     "setup_quality": 0,
                     "avg_future_return": None,
                     "positive_rate": None,
@@ -92,13 +112,27 @@ def predict_from_history(
 
         positive_rate = (similar["future_return"] > 0).mean() * 100
 
-        quality = calculate_setup_quality(avg_return, positive_rate, samples)
+        quality = calculate_setup_quality(
+            avg_return,
+            positive_rate,
+            samples,
+        )
 
-        reliability = calculate_reliability(samples, positive_rate)
+        reliability = calculate_reliability(
+            samples,
+            positive_rate,
+        )
+
+        prediction_score = calculate_prediction_score(
+            avg_return,
+            positive_rate,
+            reliability,
+        )
 
         predictions.append(
             {
                 "symbol": current["symbol"],
+                "prediction_score": prediction_score,
                 "setup_quality": quality,
                 "avg_future_return": avg_return,
                 "positive_rate": positive_rate,
