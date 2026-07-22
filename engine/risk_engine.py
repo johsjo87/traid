@@ -1,7 +1,11 @@
 import pandas as pd
 
 
-def analyze_risk(features: pd.DataFrame, regime: str) -> dict:
+def analyze_risk(
+    features: pd.DataFrame,
+    regime: str,
+    portfolio: pd.DataFrame,
+) -> dict:
 
     volatility = features["volatility"].mean()
 
@@ -19,7 +23,6 @@ def analyze_risk(features: pd.DataFrame, regime: str) -> dict:
 
     if volatility > features["volatility"].median():
         risk_score += 2
-
         reasons.append("Volatility is elevated")
 
     else:
@@ -31,7 +34,6 @@ def analyze_risk(features: pd.DataFrame, regime: str) -> dict:
 
     if distance_high < 0.90:
         risk_score += 1
-
         reasons.append("Market is below recent highs")
 
     else:
@@ -43,7 +45,6 @@ def analyze_risk(features: pd.DataFrame, regime: str) -> dict:
 
     if momentum < 0:
         risk_score += 1
-
         reasons.append("Momentum is weak")
 
     else:
@@ -55,8 +56,24 @@ def analyze_risk(features: pd.DataFrame, regime: str) -> dict:
 
     if regime == "BEAR":
         risk_score += 2
-
         reasons.append("Market regime is bearish")
+
+    # -------------------------
+    # STRATEGY CONFIDENCE
+    # -------------------------
+
+    if portfolio is not None and not portfolio.empty:
+        average_score = portfolio["score"].mean()
+
+        average_confidence = portfolio["confidence"].mean()
+
+        if average_score > 80 and average_confidence >= 0.8:
+            risk_score -= 1
+            reasons.append("TRAID signals are strong")
+
+        elif average_score < 60:
+            risk_score += 1
+            reasons.append("TRAID signals are weak")
 
     # -------------------------
     # FINAL RISK

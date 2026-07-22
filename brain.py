@@ -10,6 +10,7 @@ from engine.risk_engine import analyze_risk
 from engine.stock_analysis import analyze_portfolio
 from engine.timeframe_analysis import analyze_timeframes_portfolio
 from engine.prediction_engine import predict_from_history
+from engine.benchmark import benchmark_stats
 
 
 def main():
@@ -35,6 +36,7 @@ def main():
         "ABBV",
         "KO",
         "MCD",
+        "SPY",
     ]
 
     # -------------------------
@@ -69,7 +71,11 @@ def main():
 
     outlook = build_market_outlook(result["features"], result["regime"])
 
-    risk = analyze_risk(result["features"], result["regime"])
+    risk = analyze_risk(
+        result["features"],
+        result["regime"],
+        result["portfolio"],
+    )
 
     print("\nREGIME:", result["regime"])
 
@@ -234,9 +240,29 @@ def main():
     # SIMULATION
     # -------------------------
 
-    equity = run_simulation(prices, window=60)
+    equity, stats = run_simulation(prices, window=60)
 
-    print("\nFINAL EQUITY:", equity.iloc[-1])
+    spy = benchmark_stats(prices["SPY"].dropna())
+
+    print("\nBACKTEST")
+    print("--------------------------------")
+
+    print("TRAID")
+    print(f"Return:           {stats['total_return']:.2%}")
+    print(f"Max drawdown:     {stats['max_drawdown']:.2%}")
+    print(f"Trades:           {stats['trades']}")
+    print(f"Win rate:         {stats['win_rate']:.2%}")
+    print(f"Profit factor:    {stats['profit_factor']:.2f}")
+
+    print()
+
+    print("SPY")
+    print(f"Return:           {spy['total_return']:.2%}")
+    print(f"Max drawdown:     {spy['max_drawdown']:.2%}")
+
+    print()
+
+    print(f"Outperformance:   {stats['total_return'] - spy['total_return']:+.2%}")
 
     # -------------------------
     # ROBUSTNESS

@@ -34,7 +34,10 @@ def build_strategy(
         predictions,
     )
 
-    portfolio = build_portfolio_weights(alpha, top_n=top_n)
+    portfolio = build_portfolio_weights(
+        alpha,
+        regime,
+    )
 
     return {
         "features": features,
