@@ -12,8 +12,8 @@ def build_strategy(
     prices: pd.DataFrame,
     dataset: pd.DataFrame,
     top_n: int = 10,
+    use_prediction: bool = True,
 ):
-
     features = build_feature_matrix(prices)
 
     if features is None or len(features) == 0:
@@ -22,17 +22,30 @@ def build_strategy(
     regime = detect_regime(features)
 
     alpha = build_alpha(features, regime)
-    predictions = predict_from_history(
-        features,
-        dataset,
-    )
 
-    if alpha is None or len(alpha) == 0:
-        raise ValueError("Alpha is empty")
-    alpha = combine_scores(
-        alpha,
-        predictions,
-    )
+    if use_prediction:
+        predictions = predict_from_history(
+            features,
+            dataset,
+        )
+
+        if alpha is None or len(alpha) == 0:
+            raise ValueError("Alpha is empty")
+
+        alpha = combine_scores(
+            alpha,
+            predictions,
+        )
+
+    else:
+        predictions = pd.DataFrame()
+
+        alpha["prediction_bonus"] = 0.0
+        alpha["prediction_samples"] = 0
+        alpha["confidence"] = 0.0
+
+        alpha["alpha_score"] = alpha["score"]
+        alpha["final_score"] = alpha["score"]
 
     portfolio = build_portfolio_weights(
         alpha,

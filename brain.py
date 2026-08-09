@@ -11,6 +11,7 @@ from engine.stock_analysis import analyze_portfolio
 from engine.timeframe_analysis import analyze_timeframes_portfolio
 from engine.prediction_engine import predict_from_history
 from engine.benchmark import benchmark_stats
+from engine.validation import validate_no_lookahead
 
 
 def main():
@@ -56,6 +57,32 @@ def main():
     print(f"\nRESEARCH DATASET: {len(dataset)} rows")
 
     # -------------------------
+    # LOOKAHEAD VALIDATION
+    # -------------------------
+
+    validation = validate_no_lookahead(prices)
+
+    print("\nLOOKAHEAD VALIDATION")
+    print("--------------------------------")
+
+    print(f"Valid: {validation['valid']}")
+
+    if "rows_checked" in validation:
+        print(f"Rows checked: {validation['rows_checked']}")
+
+    if "violation_count" in validation:
+        print(f"Violations: {validation['violation_count']}")
+
+    if validation.get("violations"):
+        print("\nViolations:")
+
+        for violation in validation["violations"]:
+            print("-", violation)
+
+    if not validation["valid"]:
+        raise ValueError("Lookahead validation failed. Backtest should not be trusted.")
+
+    # -------------------------
     # STRATEGY
     # -------------------------
 
@@ -63,13 +90,17 @@ def main():
         prices,
         dataset,
         top_n=10,
+        use_prediction=True,
     )
 
     # -------------------------
     # MARKET OUTLOOK
     # -------------------------
 
-    outlook = build_market_outlook(result["features"], result["regime"])
+    outlook = build_market_outlook(
+        result["features"],
+        result["regime"],
+    )
 
     risk = analyze_risk(
         result["features"],
@@ -141,7 +172,10 @@ def main():
     # STOCK ANALYSIS
     # -------------------------
 
-    stock_reports = analyze_portfolio(result["portfolio"], result["features"])
+    stock_reports = analyze_portfolio(
+        result["portfolio"],
+        result["features"],
+    )
 
     print("\nSTOCK ANALYSIS")
     print("--------------------------------")
@@ -170,7 +204,8 @@ def main():
     # -------------------------
 
     timeframe_reports = analyze_timeframes_portfolio(
-        result["portfolio"], result["features"]
+        result["portfolio"],
+        result["features"],
     )
 
     print("\nTIMEFRAME ANALYSIS")
@@ -189,7 +224,10 @@ def main():
     # PREDICTION ENGINE
     # -------------------------
 
-    predictions = predict_from_history(result["features"], dataset)
+    predictions = predict_from_history(
+        result["features"],
+        dataset,
+    )
 
     print("\nPREDICTION ENGINE")
     print("--------------------------------")
@@ -237,44 +275,140 @@ def main():
     print(optimization.to_string(index=False))
 
     # -------------------------
-    # SIMULATION
+    # BACKTEST A/B TEST
     # -------------------------
 
-    equity, stats = run_simulation(prices, window=60)
+    print("\nBACKTEST A/B TEST")
+    print("--------------------------------")
+
+    # --------------------------------------------------
+    # A: ALPHA + PREDICTION
+    # --------------------------------------------------
+
+    equity_prediction, stats_prediction = run_simulation(
+        prices,
+        window=60,
+        use_prediction=True,
+    )
+
+    # --------------------------------------------------
+    # B: ALPHA ONLY
+    # --------------------------------------------------
+
+    equity_alpha, stats_alpha = run_simulation(
+        prices,
+        window=60,
+        use_prediction=False,
+    )
+
+    # --------------------------------------------------
+    # SPY BENCHMARK
+    # --------------------------------------------------
 
     spy = benchmark_stats(prices["SPY"].dropna())
 
-    print("\nBACKTEST")
+    # --------------------------------------------------
+    # ALPHA + PREDICTION
+    # --------------------------------------------------
+
+    print("\nTRAID — ALPHA + PREDICTION")
     print("--------------------------------")
 
-    print("TRAID")
-    print(f"Return:           {stats['total_return']:.2%}")
-    print(f"Max drawdown:     {stats['max_drawdown']:.2%}")
-    print(f"Trades:           {stats['trades']}")
-    print(f"Win rate:         {stats['win_rate']:.2%}")
-    print(f"Profit factor:    {stats['profit_factor']:.2f}")
+    print(f"Return:           {stats_prediction['total_return']:.2%}")
 
-    print()
+    print(f"Max drawdown:     {stats_prediction['max_drawdown']:.2%}")
 
-    print("SPY")
+    print(f"Trades:           {stats_prediction['trades']}")
+
+    print(f"Win rate:         {stats_prediction['win_rate']:.2%}")
+
+    print(f"Profit factor:    {stats_prediction['profit_factor']:.2f}")
+
+    # --------------------------------------------------
+    # ALPHA ONLY
+    # --------------------------------------------------
+
+    print("\nTRAID — ALPHA ONLY")
+    print("--------------------------------")
+
+    print(f"Return:           {stats_alpha['total_return']:.2%}")
+
+    print(f"Max drawdown:     {stats_alpha['max_drawdown']:.2%}")
+
+    print(f"Trades:           {stats_alpha['trades']}")
+
+    print(f"Win rate:         {stats_alpha['win_rate']:.2%}")
+
+    print(f"Profit factor:    {stats_alpha['profit_factor']:.2f}")
+
+    # --------------------------------------------------
+    # SPY
+    # --------------------------------------------------
+
+    print("\nSPY")
+    print("--------------------------------")
+
     print(f"Return:           {spy['total_return']:.2%}")
+
     print(f"Max drawdown:     {spy['max_drawdown']:.2%}")
 
-    print()
+    # --------------------------------------------------
+    # OUTPERFORMANCE
+    # --------------------------------------------------
 
-    print(f"Outperformance:   {stats['total_return'] - spy['total_return']:+.2%}")
+    print("\nOUTPERFORMANCE")
+    print("--------------------------------")
+
+    print(
+        f"Alpha + Prediction: "
+        f"{stats_prediction['total_return'] - spy['total_return']:+.2%}"
+    )
+
+    print(
+        f"Alpha Only:         {stats_alpha['total_return'] - spy['total_return']:+.2%}"
+    )
+
+    # --------------------------------------------------
+    # PREDICTION CONTRIBUTION
+    # --------------------------------------------------
+
+    print("\nPREDICTION CONTRIBUTION")
+    print("--------------------------------")
+
+    print(
+        f"Return difference:  "
+        f"{stats_prediction['total_return'] - stats_alpha['total_return']:+.2%}"
+    )
+
+    print(
+        f"Drawdown difference:"
+        f" {stats_prediction['max_drawdown'] - stats_alpha['max_drawdown']:+.2%}"
+    )
+
+    print(
+        f"Win rate difference:"
+        f" {stats_prediction['win_rate'] - stats_alpha['win_rate']:+.2%}"
+    )
+
+    print(
+        f"Profit factor diff: "
+        f"{stats_prediction['profit_factor'] - stats_alpha['profit_factor']:+.2f}"
+    )
 
     # -------------------------
     # ROBUSTNESS
     # -------------------------
 
     try:
-        stats = run_robustness_test(prices, runs=10)
+        robustness = run_robustness_test(
+            prices,
+            runs=10,
+        )
 
         print("\nROBUSTNESS")
         print("--------------------------------")
 
-        print(stats)
+        print(robustness)
 
     except Exception as e:
         print("\nROBUSTNESS SKIPPED:")

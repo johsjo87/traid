@@ -9,24 +9,52 @@ def build_feature_dataset(
     horizon: int = 20,
 ) -> pd.DataFrame:
     """
-    Bygger ett dataset för forskning.
+    Bygger ett historiskt research-dataset.
 
-    Varje rad innehåller:
-    - features vid en viss dag
-    - den faktiska framtida avkastningen
+    Varje rad representerar ett historiskt beslutstillfälle och innehåller:
+
+    - decision_date
+    - symbol
+    - features som var tillgängliga vid beslutet
+    - future_return som endast används som target/resultat
+
+    Viktigt:
+    Signalfeatures får endast använda data fram till decision_date.
+    Future return beräknas först efter decision_date.
     """
 
     rows = []
 
-    last_day = len(prices) - horizon
+    if prices.empty:
+        return pd.DataFrame()
 
-    for day in range(lookback, last_day):
+    if horizon <= 0:
+        raise ValueError("horizon must be greater than 0")
+
+    if lookback <= 0:
+        raise ValueError("lookback must be greater than 0")
+
+    # ---------------------------------------------------------
+    # HISTORICAL DECISION DATES
+    # ---------------------------------------------------------
+
+    for day in range(lookback, len(prices)):
+        # All information available at the decision point.
         history = prices.iloc[:day]
+
+        if history.empty:
+            continue
+
+        decision_date = history.index[-1]
 
         features = build_feature_matrix(history)
 
         if features.empty:
             continue
+
+        # -----------------------------------------------------
+        # EACH SYMBOL
+        # -----------------------------------------------------
 
         for _, feature in features.iterrows():
             symbol = feature["symbol"]
@@ -34,19 +62,57 @@ def build_feature_dataset(
             if symbol not in prices.columns:
                 continue
 
-            future_prices = prices[symbol].dropna()
+            # -------------------------------------------------
+            # SYMBOL-SPECIFIC VALID PRICE HISTORY
+            # -------------------------------------------------
 
-            if day + horizon >= len(future_prices):
+            symbol_prices = prices[symbol].dropna()
+
+            if symbol_prices.empty:
                 continue
 
-            p0 = float(future_prices.iloc[day])
-            p1 = float(future_prices.iloc[day + horizon])
+            # Last price that was actually available
+            # at the decision date.
+            historical_prices = symbol_prices.loc[symbol_prices.index <= decision_date]
+
+            if len(historical_prices) == 0:
+                continue
+
+            decision_position = len(historical_prices) - 1
+
+            # We need `horizon` future observations.
+            future_position = decision_position + horizon
+
+            if future_position >= len(symbol_prices):
+                continue
+
+            p0 = float(historical_prices.iloc[-1])
+            p1 = float(symbol_prices.iloc[future_position])
+
+            if p0 <= 0:
+                continue
 
             future_return = (p1 / p0) - 1
 
+            # -------------------------------------------------
+            # STORE RESEARCH OBSERVATION
+            # -------------------------------------------------
+
             row = feature.to_dict()
+
+            row["decision_date"] = decision_date
             row["future_return"] = future_return
 
             rows.append(row)
 
-    return pd.DataFrame(rows)
+    dataset = pd.DataFrame(rows)
+
+    if dataset.empty:
+        return dataset
+
+    # Keep dates explicit and sorted.
+    dataset["decision_date"] = pd.to_datetime(dataset["decision_date"])
+
+    dataset = dataset.sort_values(["decision_date", "symbol"]).reset_index(drop=True)
+
+    return dataset

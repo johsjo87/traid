@@ -5,7 +5,7 @@ from typing import Optional
 _price_cache: Optional[pd.DataFrame] = None
 
 
-def load_price_history(tickers, period="6mo"):
+def load_price_history(tickers, period="1y"):
 
     global _price_cache
 
