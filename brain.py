@@ -1,3 +1,5 @@
+import pandas as pd
+
 from engine.historical import load_price_history
 from engine.strategy import build_strategy
 from engine.simulator import run_simulation
@@ -9,9 +11,13 @@ from engine.market_outlook import build_market_outlook
 from engine.risk_engine import analyze_risk
 from engine.stock_analysis import analyze_portfolio
 from engine.timeframe_analysis import analyze_timeframes_portfolio
-from engine.prediction_engine import predict_from_history
+from engine.prediction_engine import (
+    predict_from_history,
+    analyze_prediction_quality,
+)
 from engine.benchmark import benchmark_stats
 from engine.validation import validate_no_lookahead
+from engine.decision_validation import validate_decisions
 
 
 def main():
@@ -40,25 +46,31 @@ def main():
         "SPY",
     ]
 
-    # -------------------------
+    # =========================================================
     # LOAD DATA
-    # -------------------------
+    # =========================================================
 
     prices = load_price_history(tickers)
 
+    if prices is None or prices.empty:
+        raise ValueError("No price data available.")
+
     print(f"DATA: {len(prices)} rows, {len(prices.columns)} symbols")
 
-    # -------------------------
+    # =========================================================
     # RESEARCH DATASET
-    # -------------------------
+    # =========================================================
 
     dataset = build_feature_dataset(prices)
 
     print(f"\nRESEARCH DATASET: {len(dataset)} rows")
 
-    # -------------------------
+    if dataset.empty:
+        raise ValueError("Research dataset is empty.")
+
+    # =========================================================
     # LOOKAHEAD VALIDATION
-    # -------------------------
+    # =========================================================
 
     validation = validate_no_lookahead(prices)
 
@@ -82,9 +94,9 @@ def main():
     if not validation["valid"]:
         raise ValueError("Lookahead validation failed. Backtest should not be trusted.")
 
-    # -------------------------
+    # =========================================================
     # STRATEGY
-    # -------------------------
+    # =========================================================
 
     result = build_strategy(
         prices,
@@ -93,9 +105,45 @@ def main():
         use_prediction=True,
     )
 
-    # -------------------------
+    # =========================================================
+    # PREDICTION QUALITY DIAGNOSTIC
+    # =========================================================
+
+    prediction_quality = analyze_prediction_quality(
+        result["features"],
+        dataset,
+    )
+
+    print("\nPREDICTION QUALITY DIAGNOSTIC")
+    print("--------------------------------")
+
+    if prediction_quality.empty:
+        print("No diagnostic results")
+
+    else:
+        diagnostic_summary = (
+            prediction_quality.groupby("sample_size")
+            .agg(
+                avg_future_return=("avg_future_return", "mean"),
+                positive_rate=("positive_rate", "mean"),
+                observations=("samples", "sum"),
+            )
+            .reset_index()
+        )
+
+        print(
+            diagnostic_summary.to_string(
+                index=False,
+                formatters={
+                    "avg_future_return": "{:.4%}".format,
+                    "positive_rate": "{:.2%}".format,
+                },
+            )
+        )
+
+    # =========================================================
     # MARKET OUTLOOK
-    # -------------------------
+    # =========================================================
 
     outlook = build_market_outlook(
         result["features"],
@@ -114,31 +162,24 @@ def main():
     print("--------------------------------")
 
     print(f"Regime:            {outlook['regime']}")
-
     print(f"Short-term:        {outlook['short_term']}")
-
     print(f"Risk level:        {outlook['risk']}")
-
     print(f"Momentum:          {outlook['momentum']:.4f}")
-
     print(f"Relative strength: {outlook['relative_strength']:.4f}")
-
     print(f"Volatility:        {outlook['volatility']:.4f}")
-
     print(f"Distance to high:  {outlook['distance_high']:.4f}")
 
     print("\nAnalysis:")
     print(outlook["analysis"])
 
-    # -------------------------
+    # =========================================================
     # MARKET RISK
-    # -------------------------
+    # =========================================================
 
     print("\nMARKET RISK")
     print("--------------------------------")
 
     print(f"Risk:              {risk['risk']}")
-
     print(f"Suggested exposure:{risk['exposure']}")
 
     print("\nReasons:")
@@ -146,31 +187,33 @@ def main():
     for reason in risk["reasons"]:
         print("-", reason)
 
-    # -------------------------
+    # =========================================================
     # PORTFOLIO
-    # -------------------------
+    # =========================================================
 
     print("\nPORTFOLIO")
     print("--------------------------------")
 
-    print(
-        result["portfolio"][
-            [
-                "symbol",
-                "alpha_score",
-                "prediction_bonus",
-                "confidence",
-                "prediction_samples",
-                "score",
-                "signal",
-                "weight",
-            ]
-        ].to_string(index=False)
-    )
+    portfolio_columns = [
+        "symbol",
+        "alpha_score",
+        "prediction_bonus",
+        "confidence",
+        "prediction_samples",
+        "score",
+        "signal",
+        "weight",
+    ]
 
-    # -------------------------
+    available_portfolio_columns = [
+        column for column in portfolio_columns if column in result["portfolio"].columns
+    ]
+
+    print(result["portfolio"][available_portfolio_columns].to_string(index=False))
+
+    # =========================================================
     # STOCK ANALYSIS
-    # -------------------------
+    # =========================================================
 
     stock_reports = analyze_portfolio(
         result["portfolio"],
@@ -184,9 +227,7 @@ def main():
         print("\n" + report["symbol"])
 
         print("Score:", report["score"])
-
         print("Signal:", report["signal"])
-
         print("Short term:", report["outlook"])
 
         print("Strengths:")
@@ -199,9 +240,9 @@ def main():
         for item in report["risks"]:
             print("-", item)
 
-    # -------------------------
+    # =========================================================
     # TIMEFRAME ANALYSIS
-    # -------------------------
+    # =========================================================
 
     timeframe_reports = analyze_timeframes_portfolio(
         result["portfolio"],
@@ -215,14 +256,12 @@ def main():
         print("\n" + item["symbol"])
 
         print("Short term:", item["short_term"])
-
         print("Medium term:", item["medium_term"])
-
         print("Long term:", item["long_term"])
 
-    # -------------------------
+    # =========================================================
     # PREDICTION ENGINE
-    # -------------------------
+    # =========================================================
 
     predictions = predict_from_history(
         result["features"],
@@ -237,24 +276,27 @@ def main():
 
         if row["samples"] == 0:
             print("No similar historical cases found.")
-
             continue
 
         print(f"Setup quality: {row['setup_quality']}/100")
-
         print(f"Prediction score: {row['prediction_score']:+.2f}")
-
         print(f"Reliability: {row['reliability']}")
 
-        print(f"Average future return: {row['avg_future_return']:.2%}")
+        if pd.notna(row["avg_future_return"]):
+            print(f"Average future return: {row['avg_future_return']:.2%}")
+        else:
+            print("Average future return: N/A")
 
-        print(f"Positive outcomes: {row['positive_rate']:.1f}%")
+        if pd.notna(row["positive_rate"]):
+            print(f"Positive outcomes: {row['positive_rate']:.1f}%")
+        else:
+            print("Positive outcomes: N/A")
 
         print(f"Historical samples: {int(row['samples'])}")
 
-    # -------------------------
+    # =========================================================
     # FEATURE ANALYSIS
-    # -------------------------
+    # =========================================================
 
     feature_summary = analyze_features(dataset)
 
@@ -263,9 +305,9 @@ def main():
 
     print(feature_summary.to_string(index=False))
 
-    # -------------------------
+    # =========================================================
     # FEATURE OPTIMIZATION
-    # -------------------------
+    # =========================================================
 
     optimization = optimize_features(dataset)
 
@@ -274,16 +316,106 @@ def main():
 
     print(optimization.to_string(index=False))
 
-    # -------------------------
+    # =========================================================
+    # DECISION VALIDATION
+    # =========================================================
+
+    decision_validation = validate_decisions(
+        prices,
+        lookback=60,
+        horizon=20,
+        max_samples=100,
+    )
+
+    print("\nDECISION VALIDATION")
+    print("--------------------------------")
+
+    decisions = decision_validation["decisions"]
+
+    if decisions.empty:
+        print("No historical decisions available.")
+
+    else:
+        print(f"Historical decisions: {len(decisions)}")
+
+        # -----------------------------------------------------
+        # ALPHA SCORE
+        # -----------------------------------------------------
+
+        print("\nALPHA SCORE")
+
+        print(
+            decision_validation["alpha"].to_string(
+                index=False,
+                formatters={
+                    "avg_return": "{:.2%}".format,
+                    "median_return": "{:.2%}".format,
+                    "win_rate": "{:.2%}".format,
+                },
+            )
+        )
+
+        # -----------------------------------------------------
+        # PREDICTION SCORE
+        # -----------------------------------------------------
+
+        print("\nPREDICTION SCORE")
+
+        print(
+            decision_validation["prediction"].to_string(
+                index=False,
+                formatters={
+                    "avg_return": "{:.2%}".format,
+                    "median_return": "{:.2%}".format,
+                    "win_rate": "{:.2%}".format,
+                },
+            )
+        )
+
+        # -----------------------------------------------------
+        # RELIABILITY
+        # -----------------------------------------------------
+
+        print("\nRELIABILITY")
+
+        print(
+            decision_validation["reliability"].to_string(
+                index=False,
+                formatters={
+                    "avg_return": "{:.2%}".format,
+                    "median_return": "{:.2%}".format,
+                    "win_rate": "{:.2%}".format,
+                },
+            )
+        )
+
+        # -----------------------------------------------------
+        # SETUP QUALITY
+        # -----------------------------------------------------
+
+        print("\nSETUP QUALITY")
+
+        print(
+            decision_validation["setup_quality"].to_string(
+                index=False,
+                formatters={
+                    "avg_return": "{:.2%}".format,
+                    "median_return": "{:.2%}".format,
+                    "win_rate": "{:.2%}".format,
+                },
+            )
+        )
+
+    # =========================================================
     # BACKTEST A/B TEST
-    # -------------------------
+    # =========================================================
 
     print("\nBACKTEST A/B TEST")
     print("--------------------------------")
 
-    # --------------------------------------------------
+    # ---------------------------------------------------------
     # A: ALPHA + PREDICTION
-    # --------------------------------------------------
+    # ---------------------------------------------------------
 
     equity_prediction, stats_prediction = run_simulation(
         prices,
@@ -291,9 +423,9 @@ def main():
         use_prediction=True,
     )
 
-    # --------------------------------------------------
+    # ---------------------------------------------------------
     # B: ALPHA ONLY
-    # --------------------------------------------------
+    # ---------------------------------------------------------
 
     equity_alpha, stats_alpha = run_simulation(
         prices,
@@ -301,15 +433,22 @@ def main():
         use_prediction=False,
     )
 
-    # --------------------------------------------------
+    # ---------------------------------------------------------
     # SPY BENCHMARK
-    # --------------------------------------------------
+    # ---------------------------------------------------------
 
-    spy = benchmark_stats(prices["SPY"].dropna())
+    if "SPY" in prices.columns:
+        spy = benchmark_stats(prices["SPY"].dropna())
 
-    # --------------------------------------------------
-    # ALPHA + PREDICTION
-    # --------------------------------------------------
+    else:
+        spy = {
+            "total_return": 0.0,
+            "max_drawdown": 0.0,
+        }
+
+    # =========================================================
+    # ALPHA + PREDICTION RESULTS
+    # =========================================================
 
     print("\nTRAID — ALPHA + PREDICTION")
     print("--------------------------------")
@@ -324,9 +463,9 @@ def main():
 
     print(f"Profit factor:    {stats_prediction['profit_factor']:.2f}")
 
-    # --------------------------------------------------
-    # ALPHA ONLY
-    # --------------------------------------------------
+    # =========================================================
+    # ALPHA ONLY RESULTS
+    # =========================================================
 
     print("\nTRAID — ALPHA ONLY")
     print("--------------------------------")
@@ -341,9 +480,9 @@ def main():
 
     print(f"Profit factor:    {stats_alpha['profit_factor']:.2f}")
 
-    # --------------------------------------------------
+    # =========================================================
     # SPY
-    # --------------------------------------------------
+    # =========================================================
 
     print("\nSPY")
     print("--------------------------------")
@@ -352,9 +491,9 @@ def main():
 
     print(f"Max drawdown:     {spy['max_drawdown']:.2%}")
 
-    # --------------------------------------------------
+    # =========================================================
     # OUTPERFORMANCE
-    # --------------------------------------------------
+    # =========================================================
 
     print("\nOUTPERFORMANCE")
     print("--------------------------------")
@@ -368,9 +507,9 @@ def main():
         f"Alpha Only:         {stats_alpha['total_return'] - spy['total_return']:+.2%}"
     )
 
-    # --------------------------------------------------
+    # =========================================================
     # PREDICTION CONTRIBUTION
-    # --------------------------------------------------
+    # =========================================================
 
     print("\nPREDICTION CONTRIBUTION")
     print("--------------------------------")
@@ -381,23 +520,23 @@ def main():
     )
 
     print(
-        f"Drawdown difference:"
-        f" {stats_prediction['max_drawdown'] - stats_alpha['max_drawdown']:+.2%}"
+        f"Drawdown difference: "
+        f"{stats_prediction['max_drawdown'] - stats_alpha['max_drawdown']:+.2%}"
     )
 
     print(
-        f"Win rate difference:"
-        f" {stats_prediction['win_rate'] - stats_alpha['win_rate']:+.2%}"
+        f"Win rate difference: "
+        f"{stats_prediction['win_rate'] - stats_alpha['win_rate']:+.2%}"
     )
 
     print(
-        f"Profit factor diff: "
+        f"Profit factor diff:  "
         f"{stats_prediction['profit_factor'] - stats_alpha['profit_factor']:+.2f}"
     )
 
-    # -------------------------
+    # =========================================================
     # ROBUSTNESS
-    # -------------------------
+    # =========================================================
 
     try:
         robustness = run_robustness_test(
